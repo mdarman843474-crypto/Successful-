@@ -1,0 +1,56 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find project
+        run: |
+          echo "--- repo files ---"
+          ls -la
+          S=$(find . -maxdepth 3 -name 'settings.gradle*' -print -quit)
+          if [ -n "$S" ] && [ -d "$(dirname "$S")/app" ]; then
+            P=$(dirname "$S")
+          else
+            Z=$(find . -maxdepth 1 -name '*.zip' -print -quit)
+            if [ -z "$Z" ]; then
+              echo "ERROR: repo me project (app folder ke saath) ya .zip nahi mili"
+              exit 1
+            fi
+            mkdir -p src_unzipped
+            unzip -q -o "$Z" -d src_unzipped
+            S=$(find src_unzipped -maxdepth 3 -name 'settings.gradle*' -print -quit)
+            if [ -z "$S" ]; then
+              echo "ERROR: zip ke andar settings.gradle.kts nahi mili"
+              exit 1
+            fi
+            P=$(dirname "$S")
+          fi
+          echo "Project folder: $P"
+          echo "PROJECT_DIR=$P" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Build debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: gradle assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PinSettings-apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
